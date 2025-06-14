@@ -1,0 +1,19 @@
+[project]
+name = "medicine"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "addict>=2.4.0",
+    "cachetools>=6.0.0",
+    "jsonpickle>=4.1.1",
+    "modelscope>=1.27.0",
+    "numpy>=2.3.0",
+    "pandas>=2.3.0",
+    "scikit-learn>=1.7.0",
+    "simplejson>=3.20.1",
+    "sortedcontainers>=2.4.0",
+    "torch>=2.7.1",
+    "transformers>=4.52.4",
+]
