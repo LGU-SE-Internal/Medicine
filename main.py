@@ -4,15 +4,20 @@ import utils as U
 from datetime import datetime
 import argparse
 from modelscope.models import Model
+import typer
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--dataset", type=str, required=True)
-    args = parser.parse_args()
-    dataset = args.dataset
+app = typer.Typer()
+
+
+@app.command()
+def run(dataset: str = "gaia"):
     U.set_seed(2024)
     time = datetime.now().strftime("%Y年%m月%d日%H时%M分%S秒")
 
     # model = Model.from_pretrained("AI-ModelScope/bert-base-uncased")
     # MultiModalTrainer(CONFIG_DICT[dataset], time).experiment()
     MultiModalTrainer(CONFIG_DICT[dataset], time).train()
+
+
+if __name__ == "__main__":
+    app()

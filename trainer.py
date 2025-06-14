@@ -23,7 +23,7 @@ class MultiModalTrainer:
     def __init__(self, config, time) -> None:
         U.set_logger(config, time)
         self.__config__ = config
-        self.__device__ = U.get_device(config)
+        self.__device__ = str(U.get_device(config))
         self.__log_data__ = self.__load_dataset__(
             LOG_DATASET[config["dataset"]](config)
         )
@@ -66,7 +66,7 @@ class MultiModalTrainer:
 
     def __load_dataset__(self, dataset):
         if self.__config__["use_tmp"] and os.path.exists(dataset.get_dataset_path()):
-            print(f"Use: cached dataset")
+            print("Use: cached dataset")
             dataset.load_from_tmp()
         else:
             dataset.load()
@@ -127,10 +127,9 @@ class MultiModalTrainer:
             avg_loss /= len(train_loader)
             record_loss.append(avg_loss)
             logger.info(f"epoch: {epoch: 3}, training loss: {avg_loss}")
-            best_model = self.__experiment_eval__(
-                model, eval_loader, best_model, modal
-            )
+            best_model = self.__experiment_eval__(model, eval_loader, best_model, modal)
         import json
+
         with open(
             os.path.join(
                 "result", self.__config__["dataset"], f"single_train_{modal}_loss.json"
@@ -152,7 +151,6 @@ class MultiModalTrainer:
         logger = logging.getLogger(self.__config__["log_name"])
         model = self.__create_model__()
         train_loader, eval_loader, test_loader = self.__get_loader__()
-
 
         if self.__config__["optim"] == "AdamW":
             optim = torch.optim.AdamW(
@@ -358,7 +356,7 @@ class MultiModalTrainer:
                 value_ratio, index_ratio = torch.sort(torch.tensor(theta_ratio))
                 coeffs = [1, 1, 1]
                 coeffs[index_ratio[0]] = 1 - alpha * value_ratio[0]  # 抑制
-                coeffs[index_ratio[-1]] = 1 + beta * value_ratio[-1] # 鼓励
+                coeffs[index_ratio[-1]] = 1 + beta * value_ratio[-1]  # 鼓励
 
                 for name, parms in model.named_parameters():
                     layer = str(name).split(".")[0]
@@ -386,7 +384,7 @@ class MultiModalTrainer:
                 eval_l_loss = cur_eval_l_loss
                 eval_t_loss = cur_eval_t_loss
 
-        training_time = (time.time() - st_time)
+        training_time = time.time() - st_time
         logger.info(f"Training time={training_time: .6}, #Case={len(train_loader)}")
         model.load_state_dict(best_model[1])
         return self.__test__(model, test_loader)
@@ -434,7 +432,7 @@ class MultiModalTrainer:
             test_loss += loss.item()
             all_labels.extend(labels.cpu().tolist())
             all_preds.extend(outputs.argmax(dim=1).cpu().tolist())
-        tesing_time = (time.time() - st_time)
+        tesing_time = time.time() - st_time
         logger.info(f"Testing time={tesing_time: .6}, #Case={len(test_loader)}")
         test_loss /= len(test_loader)
         logger.info(f"Testing loss={test_loss: .6}")
@@ -448,7 +446,9 @@ class MultiModalTrainer:
             },
         )
 
-    def __experiment_eval__(self, model: ExperimentModel, eval_loader, best_model, modal):
+    def __experiment_eval__(
+        self, model: ExperimentModel, eval_loader, best_model, modal
+    ):
         logger = logging.getLogger(self.__config__["log_name"])
         model.set_use_modal(modal)
         model.eval()
