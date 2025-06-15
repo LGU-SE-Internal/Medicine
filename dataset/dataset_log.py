@@ -10,6 +10,7 @@ import pandas as pd
 import numpy as np
 import json
 from joblib import Memory
+from tqdm import tqdm
 
 
 class BertEncoder:
@@ -17,12 +18,12 @@ class BertEncoder:
         self._bert_tokenizer = BertTokenizer.from_pretrained(
             "google-bert/bert-base-uncased",
             cache_dir="./cache/bert",
-            local_files_only=True,
+            # local_files_only=True,
         )
         self._bert_model = BertModel.from_pretrained(
             "google-bert/bert-base-uncased",
             cache_dir="./cache/bert",
-            local_files_only=True,
+            # local_files_only=True,
         )
         self.cache = {}
         self.memory = Memory(cache_dir, verbose=0)
@@ -67,7 +68,6 @@ class LogDataset(RCABenchDataset):
         super().__init__(paths, transform=self.transform_log, cache_dir=cache_dir)
         self._drain = DrainProcesser("dataset/drain3/drain.ini", "data/gaia/drain.bin")
         self._encoder = BertEncoder()
-        self.transform = self.transform_log
 
     def transform_log(self, data_pack: Path) -> tuple[Any, Any]:
         """Transform a data pack to a tuple of (X, y).
@@ -100,7 +100,11 @@ class LogDataset(RCABenchDataset):
         seqs = []
         cnt_of_log = {}
 
-        for cnt, df in enumerate(dfs_per_minute):
+        for cnt, df in tqdm(
+            enumerate(dfs_per_minute),
+            desc="Processing drain templates",
+            total=len(dfs_per_minute),
+        ):
             log_templates = []
             for log in df["message"].tolist():
                 template = self._drain(log)
@@ -119,7 +123,7 @@ class LogDataset(RCABenchDataset):
             wei_of_log[template] = gap
             total_gap += gap
         new_seq = []
-        for seq in seqs:
+        for seq in tqdm(seqs, desc="Generating sequence embeddings"):
             repr = np.zeros((768,))
             for template in seq:
                 repr += (
