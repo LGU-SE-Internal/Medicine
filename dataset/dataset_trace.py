@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import Any
 import pandas as pd
 import numpy as np
-import json
+from .utils import load_injection_data
 
 
 class TraceDataset(RCABenchDataset):
@@ -26,11 +26,7 @@ class TraceDataset(RCABenchDataset):
         abnormal_trace_df = pd.read_parquet(fs["abnormal_trace"])
         normal_trace_df = pd.read_parquet(fs["normal_trace"])
 
-        with open(fs["injection"], "r") as f:
-            injection = json.load(f)
-            fault_type = injection["fault_type"]
-            engine = json.loads(injection["display_config"])
-            target_service = engine["injection_point"]["app_name"]
+        fault_type, target_service = load_injection_data(str(fs["injection"]))
 
         # 2. 时间戳处理（转换为秒）
         abnormal_trace_df["timestamp"] = abnormal_trace_df["time"].apply(

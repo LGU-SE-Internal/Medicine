@@ -1,18 +1,18 @@
 from pathlib import Path
 from trainer import MultiModalTrainer
+import pandas as pd
 
 
 def main():
+    cases = pd.read_parquet(
+        "/mnt/jfs/rcabench-platform-v2/meta/rcabench_filtered/index.parquet"
+    )
+    print(cases.columns)
+    top_10 = cases["datapack"].sample(n=10, random_state=675786).tolist()
+
     data_paths = [
-        Path(
-            "/mnt/jfs/rcabench-platform-v2/data/rcabench_with_issues/ts3-ts-auth-service-response-replace-code-wm6gfv"
-        ),
-        Path(
-            "/mnt/jfs/rcabench-platform-v2/data/rcabench_with_issues/ts9-ts-route-plan-service-response-delay-d65ptt"
-        ),
-        Path(
-            "/mnt/jfs/rcabench-platform-v2/data/rcabench_with_issues/ts8-ts-train-service-partition-tvxd88"
-        ),
+        Path(f"/mnt/jfs/rcabench-platform-v2/data/rcabench_filtered/{i}")
+        for i in top_10
     ]
 
     config = {

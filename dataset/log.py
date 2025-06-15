@@ -6,7 +6,6 @@ from .drain3.template_miner import TemplateMiner
 from .drain3.template_miner_config import TemplateMinerConfig
 import pandas as pd
 from tqdm import tqdm
-import utils as U
 from .base_dataset import BaseDataset
 import re
 import numpy as np

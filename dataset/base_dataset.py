@@ -1,9 +1,11 @@
 import os
-import utils as U
+import dataset.utils as U
 
 
 class BaseDataset:
-    def __init__(self, name: str, dataset_dir: str, num_workers: str, modal: str) -> None:
+    def __init__(
+        self, name: str, dataset_dir: str, num_workers: str, modal: str
+    ) -> None:
         self.dataset = name
         self.dataset_dir = dataset_dir
         self.num_workers = num_workers
@@ -16,11 +18,9 @@ class BaseDataset:
         self.instances = []
         self.failures = []
 
-        self.data_path = os.path.join(
-            "tmp", f"{self.dataset}_{modal}_tmp.json"
-        )
+        self.data_path = os.path.join("tmp", f"{self.dataset}_{modal}_tmp.json")
         U.check(self.data_path)
-    
+
     def set_label_type(self, label_type: str):
         if label_type not in self.__y__:
             raise ValueError(f"Invalid label type: {label_type}")

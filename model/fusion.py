@@ -29,6 +29,7 @@ class GatedFusion(nn.Module):
 
         return output
 
+
 class ConcatFusion(nn.Module):
     def __init__(self, input_dim=1024, output_dim=100, num_class=5):
         super(ConcatFusion, self).__init__()

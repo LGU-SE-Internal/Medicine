@@ -1,6 +1,6 @@
 from trainer import MultiModalTrainer
 from config import CONFIG_DICT
-import utils as U
+import dataset.utils as U
 from datetime import datetime
 import typer
 

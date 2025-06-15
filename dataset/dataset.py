@@ -14,7 +14,7 @@ class RCABenchDataset(Dataset):
         self.data_packs = paths
         self.transform = transform
 
-        memory = Memory(cache_dir, verbose=2)
+        memory = Memory(cache_dir, verbose=0)
         if self.transform:
             self._cached_transform = memory.cache(self.transform)
         else:

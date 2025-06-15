@@ -5,6 +5,7 @@ import numpy as np
 import random
 import pandas as pd
 import logging
+import json
 
 
 def notice(msg):
@@ -71,3 +72,49 @@ def get_device(config):
     else:
         device = torch.device("cpu")
     return device
+
+
+def load_injection_data(injection_file_path: str) -> tuple[str, str]:
+    """Load injection data and extract fault_type and target_service.
+
+    Args:
+        injection_file_path (str): Path to the injection JSON file.
+
+    Returns:
+        tuple[str, str]: A tuple of (fault_type, target_service).
+
+    Raises:
+        KeyError: If required keys are missing from the injection data.
+    """
+    with open(injection_file_path, "r") as f:
+        injection = json.load(f)
+
+        # 检查 injection 字典中的必要键
+        if "fault_type" not in injection:
+            raise KeyError(
+                f"'fault_type' key not found in injection: {list(injection.keys())}"
+            )
+        if "display_config" not in injection:
+            raise KeyError(
+                f"'display_config' key not found in injection: {list(injection.keys())}"
+            )
+
+        fault_type = injection["fault_type"]
+        engine = json.loads(injection["display_config"])
+
+        # 检查 engine 字典中的必要键
+        if "injection_point" not in engine:
+            raise KeyError(
+                f"'injection_point' key not found in engine: {list(engine.keys())}"
+            )
+
+        target_service = None
+        if "app_name" in engine["injection_point"]:
+            target_service = engine["injection_point"]["app_name"]
+        elif "source_service" in engine["injection_point"]:
+            target_service = engine["injection_point"]["source_service"]
+
+        if target_service is None:
+            target_service = "unknown_service"
+
+    return fault_type, target_service

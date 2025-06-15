@@ -18,7 +18,7 @@ class LogCluster:
         self.size = 1
 
     def get_template(self):
-        return ' '.join(self.log_template_tokens)
+        return " ".join(self.log_template_tokens)
 
     def __str__(self):
         return f"ID={str(self.cluster_id).ljust(5)} : size={str(self.size).ljust(10)}: {self.get_template()}"
@@ -50,15 +50,17 @@ class Node:
 
 
 class Drain:
-    def __init__(self,
-                 depth=4,
-                 sim_th=0.4,
-                 max_children=100,
-                 max_clusters=None,
-                 extra_delimiters=(),
-                 profiler: Profiler = NullProfiler(),
-                 param_str="<*>",
-                 parametrize_numeric_tokens=True):
+    def __init__(
+        self,
+        depth=4,
+        sim_th=0.4,
+        max_children=100,
+        max_clusters=None,
+        extra_delimiters=(),
+        profiler: Profiler = NullProfiler(),
+        param_str="<*>",
+        parametrize_numeric_tokens=True,
+    ):
         """
         Create a new Drain instance.
 
@@ -81,7 +83,9 @@ class Drain:
             raise ValueError("depth argument must be at least 3")
 
         self.log_cluster_depth = depth
-        self.max_node_depth = depth - 2  # max depth of a prefix tree node, starting from zero
+        self.max_node_depth = (
+            depth - 2
+        )  # max depth of a prefix tree node, starting from zero
         self.sim_th = sim_th
         self.max_children = max_children
         self.root_node = Node()
@@ -92,7 +96,9 @@ class Drain:
         self.parametrize_numeric_tokens = parametrize_numeric_tokens
 
         # key: int, value: LogCluster
-        self.id_to_cluster = {} if max_clusters is None else LogClusterCache(maxsize=max_clusters)
+        self.id_to_cluster = (
+            {} if max_clusters is None else LogClusterCache(maxsize=max_clusters)
+        )
         self.clusters_counter = 0
 
     @property
@@ -103,8 +109,9 @@ class Drain:
     def has_numbers(s):
         return any(char.isdigit() for char in s)
 
-    def tree_search(self, root_node: Node, tokens: list, sim_th: float, include_params: bool):
-
+    def tree_search(
+        self, root_node: Node, tokens: list, sim_th: float, include_params: bool
+    ):
         # at first level, children are grouped by token (word) count
         token_count = len(tokens)
         cur_node = root_node.key_to_child_node.get(str(token_count))
@@ -159,7 +166,6 @@ class Drain:
 
         current_depth = 1
         for token in cluster.log_template_tokens:
-
             # if at max depth or this is last token in template - add current log cluster to the leaf node
             if current_depth >= self.max_node_depth or current_depth >= token_count:
                 # clean up stale clusters before adding a new one.
@@ -232,7 +238,9 @@ class Drain:
 
         return ret_val, param_count
 
-    def fast_match(self, cluster_ids: Sequence, tokens: list, sim_th: float, include_params: bool):
+    def fast_match(
+        self, cluster_ids: Sequence, tokens: list, sim_th: float, include_params: bool
+    ):
         """
         Find the best match for a log message (represented as tokens) versus a list of clusters
         :param cluster_ids: List of clusters to match against (represented by their IDs)
@@ -253,8 +261,12 @@ class Drain:
             cluster = self.id_to_cluster.get(cluster_id)
             if cluster is None:
                 continue
-            cur_sim, param_count = self.get_seq_distance(cluster.log_template_tokens, tokens, include_params)
-            if cur_sim > max_sim or (cur_sim == max_sim and param_count > max_param_count):
+            cur_sim, param_count = self.get_seq_distance(
+                cluster.log_template_tokens, tokens, include_params
+            )
+            if cur_sim > max_sim or (
+                cur_sim == max_sim and param_count > max_param_count
+            ):
                 max_sim = cur_sim
                 max_param_count = param_count
                 max_cluster = cluster
@@ -278,12 +290,12 @@ class Drain:
         self.print_node("root", self.root_node, 0, file, max_clusters)
 
     def print_node(self, token, node, depth, file, max_clusters):
-        out_str = '\t' * depth
+        out_str = "\t" * depth
 
         if depth == 0:
-            out_str += f'<{token}>'
+            out_str += f"<{token}>"
         elif depth == 1:
-            out_str += f'<L={token}>'
+            out_str += f"<L={token}>"
         else:
             out_str += f'"{token}"'
 
@@ -297,7 +309,7 @@ class Drain:
 
         for cid in node.cluster_ids[:max_clusters]:
             cluster = self.id_to_cluster[cid]
-            out_str = '\t' * (depth + 1) + str(cluster)
+            out_str = "\t" * (depth + 1) + str(cluster)
             print(out_str, file=file)
 
     def get_content_as_tokens(self, content):
@@ -312,7 +324,9 @@ class Drain:
 
         if self.profiler:
             self.profiler.start_section("tree_search")
-        match_cluster = self.tree_search(self.root_node, content_tokens, self.sim_th, False)
+        match_cluster = self.tree_search(
+            self.root_node, content_tokens, self.sim_th, False
+        )
         if self.profiler:
             self.profiler.end_section()
 
@@ -331,7 +345,9 @@ class Drain:
         else:
             if self.profiler:
                 self.profiler.start_section("cluster_exist")
-            new_template_tokens = self.create_template(content_tokens, match_cluster.log_template_tokens)
+            new_template_tokens = self.create_template(
+                content_tokens, match_cluster.log_template_tokens
+            )
             if tuple(new_template_tokens) == match_cluster.log_template_tokens:
                 update_type = "none"
             else:
@@ -399,13 +415,17 @@ class Drain:
         # quitting on less than exact cluster matches.
         def full_search():
             all_ids = self.get_clusters_ids_for_seq_len(len(content_tokens))
-            cluster = self.fast_match(all_ids, content_tokens, required_sim_th, include_params=True)
+            cluster = self.fast_match(
+                all_ids, content_tokens, required_sim_th, include_params=True
+            )
             return cluster
 
         if full_search_strategy == "always":
             return full_search()
 
-        match_cluster = self.tree_search(self.root_node, content_tokens, required_sim_th, include_params=True)
+        match_cluster = self.tree_search(
+            self.root_node, content_tokens, required_sim_th, include_params=True
+        )
         if match_cluster is not None:
             return match_cluster
 

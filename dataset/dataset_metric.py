@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import Any
 import pandas as pd
 import numpy as np
-import json
+from .utils import load_injection_data
 
 
 class MetricDataset(RCABenchDataset):
@@ -25,14 +25,8 @@ class MetricDataset(RCABenchDataset):
         df_abnormal = pd.read_parquet(fs["abnormal_metric"])
 
         # 读取注入信息获取标签
-        with open(fs["injection"], "r") as f:
-            injection = json.load(f)
-            fault_type = injection["fault_type"]
+        fault_type, target_service = load_injection_data(str(fs["injection"]))
 
-            engine = json.loads(injection["display_config"])
-            target_service = engine["injection_point"]["app_name"]
-
-        print(df_abnormal.columns)
         df_abnormal = df_abnormal.sort_values(by="time")
 
         df_abnormal["time_bucket"] = pd.to_datetime(

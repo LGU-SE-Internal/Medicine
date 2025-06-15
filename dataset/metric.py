@@ -3,7 +3,7 @@ import pandas as pd
 from tqdm import tqdm
 from multiprocessing import Pool
 import re
-import utils as U
+import dataset.utils as U
 from .base_dataset import BaseDataset
 
 
