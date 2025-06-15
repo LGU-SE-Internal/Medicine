@@ -2,8 +2,6 @@ from trainer import MultiModalTrainer
 from config import CONFIG_DICT
 import utils as U
 from datetime import datetime
-import argparse
-from modelscope.models import Model
 import typer
 
 app = typer.Typer()
