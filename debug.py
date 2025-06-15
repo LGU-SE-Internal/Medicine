@@ -1,22 +1,38 @@
 from pathlib import Path
-from dataset.dataset_log import LogDataset
-from dataset.dataset_metric import MetricDataset
-from dataset.dataset_trace import TraceDataset
-import os
+from trainer import MultiModalTrainer
 
-paths = [
-    Path(
-        "/mnt/jfs/rcabench-platform-v2/data/rcabench_with_issues/ts3-ts-auth-service-response-replace-code-ns4vtw"
+
+def main():
+    data_paths = [
+        Path(
+            "/mnt/jfs/rcabench-platform-v2/data/rcabench_with_issues/ts3-ts-auth-service-response-replace-code-wm6gfv"
+        ),
+        Path(
+            "/mnt/jfs/rcabench-platform-v2/data/rcabench_with_issues/ts9-ts-route-plan-service-response-delay-d65ptt"
+        ),
+        Path(
+            "/mnt/jfs/rcabench-platform-v2/data/rcabench_with_issues/ts8-ts-train-service-partition-tvxd88"
+        ),
+    ]
+
+    config = {
+        "max_len": 512,
+        "d_model": 512,
+        "nhead": 8,
+        "d_ff": 2048,
+        "layer_num": 6,
+        "dropout": 0.1,
+    }
+
+    trainer = MultiModalTrainer(
+        data_paths=data_paths, config=config, cache_dir="./cache"
     )
-]
-# dataset1 = TraceDataset(paths)
-dataset2 = LogDataset(paths)
-dataset3 = MetricDataset(paths)
 
-# _ = dataset1[0]
-# print("trace")
+    results = trainer.train(epochs=50, batch_size=16, lr=1e-4)
 
-_ = dataset2[0]
-print("log")
-_ = dataset3[0]
-print("metric")
+    print("Training completed!")
+    print(f"Results: {results}")
+
+
+if __name__ == "__main__":
+    main()

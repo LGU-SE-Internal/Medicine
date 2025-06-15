@@ -11,17 +11,10 @@ class RCABenchDataset(Dataset):
         transform: Optional[Callable[[Path], tuple[Any, Any]]] = None,
         cache_dir: str = "./cache",
     ):
-        """RCABench 数据集
-
-        Args:
-            paths (list[Path]): a list of datapack in rcabench format.
-            transform (Callable[[Path], tuple[any, any]], optional): a function to transform the datapack. Defaults to None. transform returns a tuple of (X, y) where X is the input data and y is the label.
-            cache_dir (str): Directory to cache the transformed data. Defaults to "./cache".
-        """
         self.data_packs = paths
         self.transform = transform
 
-        memory = Memory(cache_dir, verbose=0)
+        memory = Memory(cache_dir, verbose=2)
         if self.transform:
             self._cached_transform = memory.cache(self.transform)
         else:
