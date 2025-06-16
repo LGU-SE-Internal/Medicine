@@ -8,7 +8,13 @@ from .utils import load_injection_data
 
 class MetricDataset(RCABenchDataset):
     def __init__(self, paths: list[Path], cache_dir: str = "./cache"):
-        super().__init__(paths, transform=self.transform_metric, cache_dir=cache_dir)
+        super().__init__(
+            paths,
+            transform=self.transform_metric,
+            cache_dir=cache_dir,
+            cache_name="dataset_metric",
+            use_dataset_cache=True,
+        )
 
     def transform_metric(self, data_pack: Path) -> tuple[Any, Any]:
         """Transform a data pack to a tuple of (X, y).

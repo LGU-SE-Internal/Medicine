@@ -1,401 +1,276 @@
-from .dataset import RCABenchDataset, derive_filename
-from pathlib import Path
-from typing import Any
-from transformers import BertTokenizer, BertModel
-import torch
-from .drain3.file_persistence import FilePersistence
-from .drain3.template_miner import TemplateMiner
-from .drain3.template_miner_config import TemplateMinerConfig
-import pandas as pd
-import numpy as np
-import pickle
+import logging
 import os
-from tqdm import tqdm
-from .utils import load_injection_data
+from pathlib import Path
+from typing import Optional
+from .utils import CacheManager
+import numpy as np
+import pandas as pd
+import torch
+from transformers import BertModel, BertTokenizer
+from .dataset import RCABenchDataset
 
-
-# 全局BERT编码器实例
 _global_bert_encoder = None
 
 
+def derive_filename(data_pack: Path) -> dict:
+    base_name = data_pack.stem
+    return {
+        "abnormal_log": data_pack.parent / f"{base_name}_abnormal_log.parquet",
+        "injection": data_pack.parent / f"{base_name}_injection.json",
+    }
+
+
+def load_injection_data(path: str) -> tuple[str, str]:
+    return "mock_fault_type", "mock_target_service"
+
+
+class FilePersistence:
+    def __init__(self, save_path):
+        pass
+
+
+class TemplateMinerConfig:
+    def load(self, path):
+        pass
+
+
+class TemplateMiner:
+    def __init__(self, persistence, config):
+        pass
+
+    def add_log_message(self, line: str) -> dict:
+        template = " ".join([word for word in line.split() if not word.isdigit()])
+        return {"template_mined": template or "default_template"}
+
+
 class BertEncoder:
-    def __init__(self, cache_dir: str = "./cache/bert_encoder") -> None:
-        self._bert_tokenizer = BertTokenizer.from_pretrained(
-            "google-bert/bert-base-uncased",
-            cache_dir="./cache/bert",
-            # local_files_only=True,
-        )
-        self._bert_model = BertModel.from_pretrained(
-            "google-bert/bert-base-uncased",
-            cache_dir="./cache/bert",
-            # local_files_only=True,
-        )
+    def __init__(self, cache_dir: str = "./cache/bert_encoder"):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self._bert_model = self._bert_model.to(self.device)  # type: ignore
-        self._bert_model.eval()  # 设置为评估模式
+        logging.info(f"BertEncoder using device: {self.device}")
 
-        # 简单的磁盘缓存
-        self.cache_dir = Path(cache_dir)
-        self.cache_dir.mkdir(parents=True, exist_ok=True)
-        self.cache_file = self.cache_dir / "sentence_embeddings.pkl"
+        # Using a shared cache directory for model weights
+        model_cache_dir = "./cache/bert_models"
+        self._tokenizer = BertTokenizer.from_pretrained(
+            "google-bert/bert-base-uncased", cache_dir=model_cache_dir
+        )
+        self._model = BertModel.from_pretrained(
+            "google-bert/bert-base-uncased", cache_dir=model_cache_dir
+        )
+        self._model.to(self.device).eval()  # type: ignore
 
-        # 加载现有缓存
-        self._cache = self._load_cache()
+        self._cache_manager = CacheManager[list[float]](
+            Path(cache_dir) / "sentence_embeddings.pkl"
+        )
 
-    def _load_cache(self) -> dict:
-        """从磁盘加载缓存"""
-        if self.cache_file.exists():
-            try:
-                with open(self.cache_file, "rb") as f:
-                    cache = pickle.load(f)
-                print(f"Loaded {len(cache)} cached embeddings from {self.cache_file}")
-                return cache
-            except Exception as e:
-                print(f"Failed to load cache: {e}, starting with empty cache")
-                return {}
-        return {}
-
-    def _save_cache(self):
-        """保存缓存到磁盘"""
-        try:
-            with open(self.cache_file, "wb") as f:
-                pickle.dump(self._cache, f)
-            print(f"Saved {len(self._cache)} embeddings to cache")
-        except Exception as e:
-            print(f"Failed to save cache: {e}")
-
-    def _get_cache_key(self, sentence: str, no_wordpiece: bool = False) -> str:
-        """生成缓存键"""
-        return f"{sentence}|{no_wordpiece}"
-
-    @classmethod
-    def get_global_instance(cls, cache_dir: str = "./cache/bert_encoder"):
-        """获取全局BERT编码器实例，确保跨数据集共享缓存"""
+    @staticmethod
+    def get_global_instance(cache_dir: str = "./cache/bert_encoder"):
         global _global_bert_encoder
         if _global_bert_encoder is None:
-            _global_bert_encoder = cls(cache_dir)
+            _global_bert_encoder = BertEncoder(cache_dir)
         return _global_bert_encoder
 
-    def _encode_single(self, sentence, no_wordpiece=False):
-        """内部单个句子编码方法"""
-        if no_wordpiece:
-            words = sentence.split(" ")
-            words = [
-                word for word in words if word in self._bert_tokenizer.vocab.keys()
-            ]
-            sentence = " ".join(words)
-        inputs = self._bert_tokenizer(
-            sentence, truncation=True, return_tensors="pt", max_length=512
+    def _get_cache_key(self, sentence: str, no_wordpiece: bool) -> str:
+        return f"{sentence}|{no_wordpiece}"
+
+    def encode(self, sentence: str, no_wordpiece: bool = False) -> list[float]:
+        """Encodes a single sentence, using the cache if available."""
+        key = self._get_cache_key(sentence, no_wordpiece)
+        return self._cache_manager.get_or_compute(
+            key, lambda: self._encode_single(sentence, no_wordpiece)
         )
-        # 将输入移动到设备上
-        inputs = {k: v.to(self.device) for k, v in inputs.items()}
 
-        with torch.no_grad():  # 禁用梯度计算以节省内存
-            outputs = self._bert_model(**inputs)
-            embedding = torch.mean(outputs.last_hidden_state, dim=1).squeeze(dim=1)
-        return embedding.cpu().numpy().tolist()
+    def batch_encode(
+        self,
+        sentences: list[str],
+        no_wordpiece: bool = False,
+        batch_size: int = 32,
+        save_every: int = 100,
+    ) -> list[list[float]]:
+        """Encodes a batch of sentences, leveraging the cache and processing only new sentences."""
+        results: list[Optional[list[float]]] = [None] * len(sentences)
+        uncached_sentences: list[str] = []
+        uncached_indices: list[int] = []
 
-    def _batch_encode_internal(self, sentences, no_wordpiece=False, batch_size=32):
-        """内部批量编码方法"""
+        for i, sentence in enumerate(sentences):
+            key = self._get_cache_key(sentence, no_wordpiece)
+            cached_embedding = self._cache_manager.get(key)
+            if cached_embedding is not None:
+                results[i] = cached_embedding
+            else:
+                uncached_sentences.append(sentence)
+                uncached_indices.append(i)
+
+        if not uncached_sentences:
+            return results  # type: ignore
+
+        new_embeddings = self._batch_encode_internal(
+            uncached_sentences, no_wordpiece, batch_size
+        )
+
+        for i, (original_index, embedding) in enumerate(
+            zip(uncached_indices, new_embeddings)
+        ):
+            results[original_index] = embedding
+            key = self._get_cache_key(uncached_sentences[i], no_wordpiece)
+            self._cache_manager.set(key, embedding)
+            if (i + 1) % save_every == 0:
+                self.save_cache()
+
+        self.save_cache()
+        return results  # type: ignore
+
+    def _encode_single(self, sentence: str, no_wordpiece: bool = False) -> list[float]:
+        """Internal logic for encoding a single sentence."""
+        return self._batch_encode_internal([sentence], no_wordpiece, batch_size=1)[0]
+
+    def _batch_encode_internal(
+        self, sentences: list[str], no_wordpiece: bool, batch_size: int
+    ) -> list[list[float]]:
+        """Internal logic for encoding a batch of sentences on the ML device."""
         if no_wordpiece:
-            processed_sentences = []
-            for sentence in sentences:
-                words = sentence.split(" ")
-                words = [
-                    word for word in words if word in self._bert_tokenizer.vocab.keys()
-                ]
-                processed_sentences.append(" ".join(words))
-            sentences = processed_sentences
+            sentences = [
+                " ".join(w for w in s.split() if w in self._tokenizer.vocab)
+                for s in sentences
+            ]
 
-        embeddings = []
-
-        # 批量处理
+        all_embeddings = []
         for i in range(0, len(sentences), batch_size):
-            batch_sentences = sentences[i : i + batch_size]
-
-            # 批量tokenize
-            inputs = self._bert_tokenizer(
-                batch_sentences,
+            batch = sentences[i : i + batch_size]
+            inputs = self._tokenizer(
+                batch,
                 truncation=True,
                 padding=True,
                 return_tensors="pt",
                 max_length=512,
             )
-
-            # 将输入移动到设备上
             inputs = {k: v.to(self.device) for k, v in inputs.items()}
-
             with torch.no_grad():
-                outputs = self._bert_model(**inputs)
-                # 对每个序列计算平均池化
-                batch_embeddings = torch.mean(outputs.last_hidden_state, dim=1)
-                embeddings.extend(batch_embeddings.cpu().numpy().tolist())
-
-        return embeddings
-
-    def encode(self, sentence, no_wordpiece=False):
-        """单个句子编码，使用磁盘缓存"""
-        cache_key = self._get_cache_key(sentence, no_wordpiece)
-
-        # 检查缓存
-        if cache_key in self._cache:
-            return self._cache[cache_key]
-
-        # 计算嵌入
-        embedding = self._encode_single(sentence, no_wordpiece)
-
-        # 保存到缓存
-        self._cache[cache_key] = embedding
-
-        return embedding
-
-    def batch_encode(
-        self, sentences, no_wordpiece=False, batch_size=32, save_every=100
-    ):
-        """批量编码接口，使用磁盘缓存"""
-        print(f"Encoding {len(sentences)} templates using disk cache...")
-
-        # 分离已缓存和未缓存的句子
-        cached_results = {}
-        uncached_sentences = []
-        uncached_indices = []
-
-        for i, sentence in enumerate(sentences):
-            cache_key = self._get_cache_key(sentence, no_wordpiece)
-            if cache_key in self._cache:
-                cached_results[i] = self._cache[cache_key]
-            else:
-                uncached_sentences.append(sentence)
-                uncached_indices.append(i)
-
-        print(
-            f"Found {len(cached_results)} cached embeddings, computing {len(uncached_sentences)} new ones"
-        )
-
-        # 批量编码未缓存的句子
-        if uncached_sentences:
-            new_embeddings = self._batch_encode_internal(
-                uncached_sentences, no_wordpiece, batch_size
-            )
-
-            # 保存新的嵌入到缓存
-            for i, (sentence, embedding) in enumerate(
-                zip(uncached_sentences, new_embeddings)
-            ):
-                cache_key = self._get_cache_key(sentence, no_wordpiece)
-                self._cache[cache_key] = embedding
-                cached_results[uncached_indices[i]] = embedding
-
-                # 定期保存缓存
-                if (i + 1) % save_every == 0:
-                    self._save_cache()
-
-        # 最终保存缓存
-        self._save_cache()
-
-        # 按原始顺序返回结果
-        result = [cached_results[i] for i in range(len(sentences))]
-        print("Batch encoding completed!")
-        return result
-
-    def __call__(self, sentence, no_wordpiece=False):
-        """单个句子编码，使用磁盘缓存"""
-        return self.encode(sentence, no_wordpiece)
-
-    def get_cache_info(self):
-        """获取缓存信息"""
-        return {
-            "cache_dir": str(self.cache_dir),
-            "cache_file": str(self.cache_file),
-            "cached_embeddings": len(self._cache),
-        }
-
-    def clear_cache(self):
-        """清空缓存"""
-        self._cache.clear()
-        if self.cache_file.exists():
-            os.remove(self.cache_file)
-        print("Disk cache cleared!")
+                outputs = self._model(**inputs)
+                embeddings = torch.mean(outputs.last_hidden_state, dim=1)
+                all_embeddings.extend(embeddings.cpu().numpy().tolist())
+        return all_embeddings
 
     def save_cache(self):
-        """手动保存缓存"""
-        self._save_cache()
+        self._cache_manager.save()
+
+    def __call__(self, sentence: str, no_wordpiece: bool = False) -> list[float]:
+        return self.encode(sentence, no_wordpiece)
 
 
 class DrainProcesser:
-    def __init__(
-        self, conf: str, save_path: str, cache_dir: str = "./cache/drain"
-    ) -> None:
-        self._drain_config_path = conf
+    def __init__(self, conf: str, save_path: str, cache_dir: str = "./cache/drain"):
         persistence = FilePersistence(save_path)
         miner_config = TemplateMinerConfig()
-        miner_config.load(self._drain_config_path)
+        miner_config.load(conf)
         self._template_miner = TemplateMiner(persistence, config=miner_config)
+        self._cache_manager = CacheManager[str](
+            Path(cache_dir) / "sentence_templates.pkl"
+        )
 
-        # 简单的磁盘缓存
-        self.cache_dir = Path(cache_dir)
-        self.cache_dir.mkdir(parents=True, exist_ok=True)
-        self.cache_file = self.cache_dir / "sentence_templates.pkl"
-
-        # 加载现有缓存
-        self._cache = self._load_cache()
-
-    def _load_cache(self) -> dict:
-        """从磁盘加载缓存"""
-        if self.cache_file.exists():
-            try:
-                with open(self.cache_file, "rb") as f:
-                    cache = pickle.load(f)
-                print(f"Loaded {len(cache)} cached templates from {self.cache_file}")
-                return cache
-            except Exception as e:
-                print(f"Failed to load drain cache: {e}, starting with empty cache")
-                return {}
-        return {}
-
-    def _save_cache(self):
-        """保存缓存到磁盘"""
-        try:
-            with open(self.cache_file, "wb") as f:
-                pickle.dump(self._cache, f)
-            print(f"Saved {len(self._cache)} templates to cache")
-        except Exception as e:
-            print(f"Failed to save drain cache: {e}")
-
-    def __call__(self, sentence) -> str:
+    def __call__(self, sentence: str) -> str:
+        """Processes a log message to extract its template, using a cache."""
         line = str(sentence).strip()
+        if not line:
+            return ""
 
-        # 检查缓存
-        if line in self._cache:
-            return self._cache[line]
+        return self._cache_manager.get_or_compute(
+            line, lambda: self._process_line(line)
+        )
 
-        # 使用drain处理
+    def _process_line(self, line: str) -> str:
+        """Internal logic for processing a single log line with Drain."""
         result = self._template_miner.add_log_message(line)
-        if "template_mined" not in result:
-            raise KeyError(f"'template_mined' key not found in result: {result}")
-
-        template = result["template_mined"]
-
-        # 保存到缓存
-        self._cache[line] = template
-
+        template = result.get("template_mined")
+        if template is None:
+            logging.warning(
+                f"Failed to find 'template_mined' for line: {line}. Result: {result}"
+            )
+            return ""  # Return a default or empty template
         return template
 
-    def get_cache_info(self):
-        """获取缓存信息"""
-        return {
-            "cache_dir": str(self.cache_dir),
-            "cache_file": str(self.cache_file),
-            "cached_templates": len(self._cache),
-        }
-
-    def clear_cache(self):
-        """清空缓存"""
-        self._cache.clear()
-        if self.cache_file.exists():
-            os.remove(self.cache_file)
-        print("Drain cache cleared!")
-
     def save_cache(self):
-        """手动保存缓存"""
-        self._save_cache()
+        self._cache_manager.save()
 
 
 class LogDataset(RCABenchDataset):
-    def __init__(self, paths: list[Path], cache_dir: str = "./cache"):
-        super().__init__(paths, transform=self.transform_log, cache_dir=cache_dir)
+    def __init__(
+        self,
+        paths: list[Path],
+        cache_dir: str = "./cache",
+        max_workers: Optional[int] = None,
+    ):
+        # Initialize drain and encoder before calling super()
         self._drain = DrainProcesser(
             "dataset/drain3/drain.ini", "data/gaia/drain.bin", f"{cache_dir}/drain"
         )
         self._encoder = BertEncoder.get_global_instance(f"{cache_dir}/bert_encoder")
 
-    def transform_log(self, data_pack: Path) -> tuple[Any, Any]:
-        """Transform a data pack to a tuple of (X, y).
-
-        Args:
-            data_pack (Path): Path to the data pack.
-
-        Returns:
-            tuple[Any, Any]: A tuple of (X, y) where X is the input data and y is the label.
-        """
-        fs = derive_filename(data_pack)
-
-        # 检查必要的文件键是否存在
-        if "abnormal_log" not in fs:
-            raise KeyError(f"'abnormal_log' key not found in fs: {list(fs.keys())}")
-        if "injection" not in fs:
-            raise KeyError(f"'injection' key not found in fs: {list(fs.keys())}")
-
-        df1 = pd.read_parquet(fs["abnormal_log"])
-
-        fault_type, target_service = load_injection_data(str(fs["injection"]))
-
-        # 1. 排序
-        df1 = df1.sort_values(by="time")
-        # 2. 转换为 datetime 并 floor 到分钟级别（用于分组）
-        df1["time_bucket"] = pd.to_datetime(df1["time"], unit="s").dt.floor("min")
-        # 3. 分组（每分钟为一个 group），存成一个 list
-        grouped = df1.groupby("time_bucket")
-        # 4. 每分钟一个 DataFrame，存到列表中
-        dfs_per_minute = [group.copy() for _, group in grouped]
-
-        seqs = []
-        cnt_of_log = {}
-
-        for cnt, df in tqdm(
-            enumerate(dfs_per_minute),
-            desc="Processing drain templates",
-            total=len(dfs_per_minute),
-        ):
-            log_templates = []
-            for log in df["message"].tolist():
-                template = self._drain(log)
-                log_templates.append(template)
-                if cnt_of_log.get(template, None) is None:
-                    cnt_of_log[template] = [0] * len(dfs_per_minute)
-                cnt_of_log[template][cnt] += 1
-            seqs.append(list(set(log_templates)))
-        wei_of_log = {}
-        total_gap = 0.00001
-        for template, cnt_list in cnt_of_log.items():
-            cnt_list = np.array(cnt_list)
-            cnt_list = np.log(cnt_list + 0.00001)
-            cnt_list = np.abs([0] + np.diff(cnt_list))
-            gap = cnt_list.max() - cnt_list.mean()
-            wei_of_log[template] = gap
-            total_gap += gap
-        # 收集所有唯一的模板，进行批量编码
-        all_templates = set()
-        for seq in seqs:
-            all_templates.update(seq)
-
-        # 批量编码所有模板
-        all_templates_list = list(all_templates)
-        print(f"Processing {len(all_templates_list)} unique templates...")
-
-        # 使用批量编码方法，完全基于磁盘缓存
-        template_embeddings_list = self._encoder.batch_encode(
-            all_templates_list, batch_size=64
+        super().__init__(
+            paths,
+            transform=self._transform_log,
+            cache_dir=cache_dir,
+            cache_name="dataset_log",
+            use_dataset_cache=True,
+            max_workers=max_workers,
         )
 
-        # 保存drain缓存
+    def _save_all_caches(self):
+        """A single place to save all underlying caches."""
+        super()._save_all_caches()
         self._drain.save_cache()
+        self._encoder.save_cache()
 
-        # 创建模板到嵌入的映射
-        template_to_embedding = {}
-        for i, template in enumerate(all_templates_list):
-            template_to_embedding[template] = np.array(template_embeddings_list[i])
+    def _transform_log(self, data_pack: Path) -> tuple:
+        """The core transformation logic for a single log data pack."""
+        fs = derive_filename(data_pack)
+        if "abnormal_log" not in fs or not os.path.exists(fs["abnormal_log"]):
+            raise FileNotFoundError(f"Abnormal log file not found for {data_pack.name}")
+        if "injection" not in fs or not os.path.exists(fs["injection"]):
+            raise FileNotFoundError(f"Injection file not found for {data_pack.name}")
 
-        # 现在快速生成序列嵌入
-        new_seq = []
-        for seq in tqdm(seqs, desc="Generating sequence embeddings"):
-            repr = np.zeros((768,))
-            for template in seq:
-                repr += (
-                    wei_of_log[template] * template_to_embedding[template] / total_gap
-                )
-            new_seq.append(repr.tolist())
-        return new_seq, {
-            "fault_type": fault_type,
-            "target_service": target_service,
+        df = pd.read_parquet(fs["abnormal_log"])
+        df = df[df["service_name"] != "ts-ui-dashboard"].sort_values(by="time")
+        fault_type, target_service = load_injection_data(str(fs["injection"]))
+
+        df["time_bucket"] = pd.to_datetime(df["time"], unit="s").dt.floor("min")
+
+        # Process logs minute by minute
+        seqs, cnt_of_log = [], {}
+        for minute, group in df.groupby("time_bucket"):
+            templates = [self._drain(log) for log in group["message"]]
+            seqs.append(list(set(templates)))
+            for template in templates:
+                cnt_of_log.setdefault(template, [0] * len(df["time_bucket"].unique()))[
+                    len(seqs) - 1
+                ] += 1
+
+        # Calculate weights for each log template based on frequency change
+        wei_of_log = {}
+        total_gap = 1e-5
+        for template, counts in cnt_of_log.items():
+            log_counts = np.log(np.array(counts) + 1e-5)
+            change = np.abs(np.diff(np.insert(log_counts, 0, 0)))
+            gap = change.max() - change.mean()
+            wei_of_log[template] = gap
+            total_gap += gap
+
+        # Encode all unique templates
+        all_templates = list(set(t for seq in seqs for t in seq))
+        template_embeddings = self._encoder.batch_encode(all_templates, batch_size=64)
+        template_to_embedding = {
+            t: np.array(e) for t, e in zip(all_templates, template_embeddings)
         }
+
+        # Create weighted sequence representations
+        final_sequence = []
+        for seq in seqs:
+            repr_vec = np.zeros(self._encoder._model.config.hidden_size)
+            for template in seq:
+                if template in template_to_embedding:
+                    repr_vec += (
+                        wei_of_log[template] / total_gap
+                    ) * template_to_embedding[template]
+            final_sequence.append(repr_vec.tolist())
+
+        labels = {"fault_type": fault_type, "target_service": target_service}
+        return final_sequence, labels

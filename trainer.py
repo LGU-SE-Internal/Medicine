@@ -104,12 +104,12 @@ class MultiModalTrainer:
             self.metric_feature_dim,
             self.trace_feature_dim,
             self.log_feature_dim,
-            self.config.get("max_len", 512),
-            self.config.get("d_model", 512),
-            self.config.get("nhead", 8),
-            self.config.get("d_ff", 2048),
-            self.config.get("layer_num", 6),
-            self.config.get("dropout", 0.1),
+            512,
+            768,
+            8,
+            256,
+            2,
+            0.3,
             self.num_classes,
             str(self.device),
         )
@@ -119,12 +119,12 @@ class MultiModalTrainer:
             self.metric_feature_dim,
             self.trace_feature_dim,
             self.log_feature_dim,
-            self.config.get("max_len", 512),
-            self.config.get("d_model", 512),
-            self.config.get("nhead", 8),
-            self.config.get("d_ff", 2048),
-            self.config.get("layer_num", 6),
-            self.config.get("dropout", 0.1),
+            512,
+            768,
+            8,
+            256,
+            2,
+            0.3,
             self.num_classes,
             str(self.device),
         )
@@ -132,14 +132,11 @@ class MultiModalTrainer:
     def get_data_loaders(self, batch_size: int = 32):
         # 划分数据集
         indices = list(range(len(self.labels)))
-        train_idx, test_idx = train_test_split(
-            indices, test_size=0.2, random_state=42, stratify=self.labels
-        )
+        train_idx, test_idx = train_test_split(indices, test_size=0.2, random_state=42)
         train_idx, eval_idx = train_test_split(
             train_idx, test_size=0.2, random_state=42
         )
 
-        # 创建数据集
         train_data = []
         eval_data = []
         test_data = []
@@ -178,7 +175,6 @@ class MultiModalTrainer:
             f"Train samples: {len(train_data)}, Eval samples: {len(eval_data)}, Test samples: {len(test_data)}"
         )
 
-        # 创建数据加载器
         train_dataset = CustomDataset(train_data)
         eval_dataset = CustomDataset(eval_data)
         test_dataset = CustomDataset(test_data)
@@ -211,17 +207,13 @@ class MultiModalTrainer:
         label_batch = []
 
         for log_data, metric_data, trace_data, label in batch:
-            # 处理 log 数据
             log_array = np.array(log_data)
             if log_array.ndim == 2:  # (time_steps, features)
-                # 使用平均池化或取最后一个时间步
                 log_array = np.mean(log_array, axis=0)
             log_batch.append(log_array)
 
-            # 处理 metric 数据
             metric_array = np.array(metric_data)
             if metric_array.ndim == 3:  # (services, time, features)
-                # 展平为 (services * features)
                 metric_array = metric_array.reshape(metric_array.shape[0], -1)
                 metric_array = np.mean(metric_array, axis=0)  # 平均池化
             elif metric_array.ndim == 2:
@@ -236,7 +228,6 @@ class MultiModalTrainer:
 
             label_batch.append(label)
 
-        # 转换为张量
         log_tensor = torch.tensor(log_batch, dtype=torch.float32)
         metric_tensor = torch.tensor(metric_batch, dtype=torch.float32)
         trace_tensor = torch.tensor(trace_batch, dtype=torch.float32)
@@ -245,14 +236,11 @@ class MultiModalTrainer:
         return (log_tensor, metric_tensor, trace_tensor), label_tensor
 
     def train(self, epochs: int = 100, batch_size: int = 32, lr: float = 1e-3):
-        # 创建数据加载器
         train_loader, eval_loader, test_loader = self.get_data_loaders(batch_size)
 
-        # 创建模型
         model = self.create_model()
         model.to(self.device)
 
-        # 创建优化器
         optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=1e-4)
         criterion = torch.nn.CrossEntropyLoss()
 
@@ -265,19 +253,16 @@ class MultiModalTrainer:
             total_loss = 0
 
             for batch_idx, (inputs, labels) in enumerate(train_loader):
-                # 将数据移到设备上
                 log_input, metric_input, trace_input = inputs
                 log_input = log_input.to(self.device)
                 metric_input = metric_input.to(self.device)
                 trace_input = trace_input.to(self.device)
                 labels = labels.to(self.device)
 
-                # 前向传播
                 optimizer.zero_grad()
                 outputs = model([log_input, metric_input, trace_input])
                 loss = criterion(outputs, labels)
 
-                # 反向传播
                 loss.backward()
                 optimizer.step()
 
@@ -285,23 +270,19 @@ class MultiModalTrainer:
 
             avg_loss = total_loss / len(train_loader)
 
-            # 验证
             eval_loss = self.evaluate(model, eval_loader, criterion)
 
             print(
                 f"Epoch {epoch + 1}/{epochs}, Train Loss: {avg_loss:.4f}, Eval Loss: {eval_loss:.4f}"
             )
 
-            # 保存最佳模型
             if eval_loss < best_eval_loss:
                 best_eval_loss = eval_loss
                 best_model_state = model.state_dict().copy()
 
-        # 加载最佳模型并测试
         if best_model_state is not None:
             model.load_state_dict(best_model_state)
 
-        # 测试
         test_results = self.test(model, test_loader)
         return test_results
 
@@ -341,7 +322,6 @@ class MultiModalTrainer:
                 all_preds.extend(preds.cpu().numpy())
                 all_labels.extend(labels.numpy())
 
-        # 计算指标
         metrics = self.calculate_metrics(all_labels, all_preds)
         return all_preds, all_labels, metrics
 

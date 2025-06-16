@@ -8,7 +8,13 @@ from .utils import load_injection_data
 
 class TraceDataset(RCABenchDataset):
     def __init__(self, paths: list[Path], cache_dir: str = "./cache"):
-        super().__init__(paths, transform=self.transform_trace, cache_dir=cache_dir)
+        super().__init__(
+            paths,
+            transform=self.transform_trace,
+            cache_dir=cache_dir,
+            cache_name="dataset_trace",
+            use_dataset_cache=True,
+        )
         self.transform = self.transform_trace
 
     def transform_trace(self, data_pack: Path) -> tuple[Any, Any]:

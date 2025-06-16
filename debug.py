@@ -8,7 +8,7 @@ def main():
         "/mnt/jfs/rcabench-platform-v2/meta/rcabench_filtered/index.parquet"
     )
     print(cases.columns)
-    top_10 = cases["datapack"].sample(n=10, random_state=675786).tolist()
+    top_10 = cases["datapack"].head(10).tolist()
 
     data_paths = [
         Path(f"/mnt/jfs/rcabench-platform-v2/data/rcabench_filtered/{i}")
