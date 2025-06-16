@@ -17,7 +17,7 @@ def main():
 
     config = {
         "max_len": 512,
-        "d_model": 512,
+        "d_model": 768,
         "nhead": 8,
         "d_ff": 2048,
         "layer_num": 6,

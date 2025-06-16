@@ -10,6 +10,7 @@ dependencies = [
     "fastparquet>=2024.11.0",
     "jsonpickle>=4.1.1",
     "jupyter>=1.1.1",
+    "loguru>=0.7.3",
     "modelscope>=1.27.0",
     "numpy>=2.3.0",
     "pandas>=2.3.0",

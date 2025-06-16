@@ -27,7 +27,6 @@ class RCABenchDataset(Dataset):
         self.use_dataset_cache = use_dataset_cache
 
         if use_dataset_cache:
-            # Use dataset-level caching (similar to LogDataset)
             self._dataset_cache = CacheManager[tuple](
                 Path(cache_dir) / "dataset" / f"{cache_name}.pkl"
             )
