@@ -138,6 +138,7 @@ class MetricEncoder(nn.Module):
         in  :   (batch_size, ins_num, ts_len, ?)
         out :   (batch_size, ts_len, ?)
         """
+        print(f"MetricEncoder input shape: {inputs.shape}")
         inputs = inputs.transpose(1, 3)
         hiddens = inputs * F.sigmoid(
             self.expand(inputs.mean(dim=1, keepdim=True).mean(dim=2, keepdim=True))
@@ -175,10 +176,12 @@ class TraceEncoder(nn.Module):
         self.dropout = nn.Dropout(dropout)
 
     def forward(self, x):
+        print(f"TraceEncoder input shape: {x.shape}")
         x = self.project(x)
         x = self.relu(x)
         x = self.layernorm(x)
         x = self.encoder(x)
         x = self.dropout(x)
         x = self.relu(x)
+        print(f"TraceEncoder output shape before return: {x.shape}")
         return x

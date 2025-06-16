@@ -6,8 +6,6 @@ from .drain3.template_miner import TemplateMiner
 from .drain3.template_miner_config import TemplateMinerConfig
 import pandas as pd
 from tqdm import tqdm
-from typing import *
-import utils as U
 from .base_dataset import BaseDataset
 import re
 import numpy as np
@@ -20,7 +18,7 @@ class BertEncoder:
         self._bert_model = BertModel.from_pretrained(config["model_path"])
         self.cache = {}
 
-    def __call__(self, sentence, no_wordpiece=False) -> torch.Any:
+    def __call__(self, sentence, no_wordpiece=False):
         r"""
         return list(len=768)
         """
@@ -142,9 +140,9 @@ class LogDataset(BaseDataset):
         anomaly_columns = groundtruth_df.columns.tolist()
         assert "st_time" in anomaly_columns, "groundtruth_df requires `st_time`"
         assert "ed_time" in anomaly_columns, "groundtruth_df requires `ed_time`"
-        assert (
-            "failure_type" in anomaly_columns
-        ), "groundtruth_df requires `failure_type`"
+        assert "failure_type" in anomaly_columns, (
+            "groundtruth_df requires `failure_type`"
+        )
         assert "root_cause" in anomaly_columns, "groundtruth_df requires `root_cause`"
         st_time = log_df.head(1)["timestamp"].item()
         ed_time = log_df.tail(1)["timestamp"].item()
@@ -171,6 +169,7 @@ class LogDataset(BaseDataset):
             )
             process_bar.update(1)
         process_bar.close()
+
 
 class Aiops22Log(LogDataset):
     def __init__(self, config: dict) -> None:

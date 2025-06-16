@@ -17,6 +17,11 @@ class GatedFusion(nn.Module):
         self.sigmoid = nn.Sigmoid()
 
     def forward(self, x, y):
+        print(f"ConcatFusion input shapes - x: {x.shape}, y: {y.shape}")
+
+        if x.dim() != 2 or y.dim() != 2:
+            print(f"Warning: Expected 2D tensors, got {x.dim()}D, {y.dim()}D")
+
         out_x = self.fc_x(x)
         out_y = self.fc_y(y)
 
@@ -28,6 +33,7 @@ class GatedFusion(nn.Module):
             output = self.fc_out(torch.mul(out_x, gate))
 
         return output
+
 
 class ConcatFusion(nn.Module):
     def __init__(self, input_dim=1024, output_dim=100, num_class=5):
@@ -106,9 +112,16 @@ class AdaFusion(nn.Module):
         self.concat_fusion = ConcatFusion(d_model * 3, d_model, num_class)
 
     def forward(self, x_list):
+        print(
+            f"Input shapes - Log: {x_list[0].shape}, Metric: {x_list[1].shape}, Trace: {x_list[2].shape}"
+        )
         x_log = self.log_encoder(x_list[0])
         x_metric = self.metric_encoder(x_list[1])
         x_trace = self.trace_encoder(x_list[2])
+        print(
+            f"Encoder outputs - Log: {x_log.shape}, Metric: {x_metric.shape}, Trace: {x_trace.shape}"
+        )
+
         return self.concat_fusion(x_metric, x_log, x_trace)
 
 

@@ -13,11 +13,13 @@ class RedisPersistence(PersistenceHandler):
         self.redis_pass = redis_pass
         self.is_ssl = is_ssl
         self.redis_key = redis_key
-        self.r = redis.Redis(host=self.redis_host,
-                             port=self.redis_port,
-                             db=self.redis_db,
-                             password=self.redis_pass,
-                             ssl=self.is_ssl)
+        self.r = redis.Redis(
+            host=self.redis_host,
+            port=self.redis_port,
+            db=self.redis_db,
+            password=self.redis_pass,
+            ssl=self.is_ssl,
+        )
 
     def save_state(self, state):
         self.r.set(self.redis_key, state)

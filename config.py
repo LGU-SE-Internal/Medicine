@@ -12,8 +12,8 @@ gaia = {
         "drain_config_path": "dataset/drain3/drain.ini",
     },
     "bert_config": {
-        "tokenizer_path": "cache/bert-base-uncased",
-        "model_path": "cache/bert-base-uncased",
+        "tokenizer_path": "google-bert/bert-base-uncased",
+        "model_path": "google-bert/bert-base-uncased",
     },
     # label info
     "failures": "login memory file access",

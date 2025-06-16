@@ -3,16 +3,17 @@ import pandas as pd
 from tqdm import tqdm
 from multiprocessing import Pool
 import re
-import utils as U
+import dataset.utils as U
 from .base_dataset import BaseDataset
 
 
 def normalize_and_diff(df, column):
     try:
-        ts = df[column].tolist()
+        ts = df[column].tolist()  # 获取时间序列
         nts = np.array(ts)
-        nts = (nts - nts.mean()) / (nts.std() + 0.00001)
-        nts = [0] + np.diff(nts).tolist()
+        # 方法: z-score标准化 + 差分
+        nts = (nts - nts.mean()) / (nts.std() + 0.00001)  # z-score标准化，避免除0
+        nts = [0] + np.diff(nts).tolist()  # 计算一阶差分，第一个值设为0
         df[column] = nts
         return df
     except Exception as e:
