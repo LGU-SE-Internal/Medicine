@@ -3,3 +3,4 @@ cache/bert-base-uncased
 data
 result
 *.log
+wandb
